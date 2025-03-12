@@ -229,7 +229,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tmux-here"
+name = "tici"
 version = "0.1.0"
 dependencies = [
  "anyhow",

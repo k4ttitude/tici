@@ -1,5 +1,5 @@
 [package]
-name = "tmux-here"
+name = "tici"
 version = "0.1.0"
 edition = "2021"
 

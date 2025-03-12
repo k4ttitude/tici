@@ -19,7 +19,11 @@ enum Commands {
     /// Save the current tmux session
     Save,
     /// Restore the tmux session for current directory
-    Restore,
+    Restore {
+        /// Dry run - only print session information without creating it
+        #[arg(short = 'n')]
+        dry_run: bool,
+    },
 }
 
 fn get_current_dir() -> Result<PathBuf> {
@@ -53,8 +57,8 @@ fn main() -> Result<()> {
         Commands::Save => {
             save::save_tmux_session(&filename)?;
         }
-        Commands::Restore => {
-            restore::restore_tmux_session(&save_path)?;
+        Commands::Restore { dry_run } => {
+            restore::restore_tmux_session(&save_path, dry_run)?;
         }
     }
 
