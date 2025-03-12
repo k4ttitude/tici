@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -108,13 +107,12 @@ impl Window {
     }
 }
 
-pub fn save_tmux_session(filename: &str) -> Result<()> {
-    // Create the .tmux-here directory if it doesn't exist
-    let home_dir = env::var("HOME").context("Failed to get HOME directory")?;
-    let save_dir = PathBuf::from(home_dir).join(".tmux-here");
-    fs::create_dir_all(&save_dir).context("Failed to create .tmux-here directory")?;
-
-    let save_path = save_dir.join(filename);
+pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
+    // Create the parent directory if it doesn't exist
+    if let Some(parent) = save_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+    }
 
     // Save the current tmux session with the specified format
     let format = "window\t#{session_name}\t#{window_index}\t:#{window_name}\t#{window_active}\t#{window_layout}";

@@ -43,7 +43,7 @@ fn get_session_file() -> Result<(PathBuf, String)> {
     let filename = format!("session_{}.tmux", hash);
 
     let home_dir = env::var("HOME").context("Failed to get HOME directory")?;
-    let save_dir = PathBuf::from(home_dir).join(".tmux-here");
+    let save_dir = PathBuf::from(home_dir).join(".tmux").join("tici");
     let save_path = save_dir.join(&filename);
 
     Ok((save_path, filename))
@@ -51,11 +51,11 @@ fn get_session_file() -> Result<(PathBuf, String)> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let (save_path, filename) = get_session_file()?;
+    let (save_path, _) = get_session_file()?;
 
-    match cli.command.unwrap_or(Commands::Save) {
+    match cli.command.unwrap_or(Commands::Restore { dry_run: false }) {
         Commands::Save => {
-            save::save_tmux_session(&filename)?;
+            save::save_tmux_session(&save_path)?;
         }
         Commands::Restore { dry_run } => {
             restore::restore_tmux_session(&save_path, dry_run)?;
