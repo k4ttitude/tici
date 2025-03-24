@@ -41,17 +41,17 @@ fn get_session_info() -> Result<(PathBuf, String)> {
     let current_dir = get_current_dir()?;
     let dir_str = current_dir.to_string_lossy();
     let hash = create_hash(&dir_str);
-    let filename = format!("session_{}.tmux", hash);
-
-    let home_dir = env::var("HOME").context("Failed to get HOME directory")?;
-    let save_dir = PathBuf::from(home_dir).join(".tmux").join("tici");
-    let save_path = save_dir.join(&filename);
 
     let session_name = current_dir
         .file_name()
         .and_then(|name| name.to_str())
         .context("Failed to get current directory name")?
         .to_string();
+    let filename = format!("session_{}_{}.tmux", hash, session_name);
+
+    let home_dir = env::var("HOME").context("Failed to get HOME directory")?;
+    let save_dir = PathBuf::from(home_dir).join(".tmux").join("tici");
+    let save_path = save_dir.join(&filename);
 
     Ok((save_path, session_name))
 }
