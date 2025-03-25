@@ -17,3 +17,15 @@ tici
 # or
 tici restore
 ```
+
+## Options
+
+Dry run
+```sh
+tici save -n
+```
+
+Specifying working directory
+```sh
+tici save -d <worker_directory>
+```
