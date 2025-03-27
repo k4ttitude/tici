@@ -144,7 +144,7 @@ pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bo
 
     // Create remaining windows
     for window in windows.iter() {
-        restore_window(session_name, window);
+        restore_window(session_name, window)?;
     }
 
     // Select the active window if any
@@ -159,26 +159,6 @@ pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bo
             .context("Failed to select active window")?;
     }
 
-    // Either switch to or attach to the restored session based on whether we're in tmux
-    if is_inside_tmux() {
-        Command::new("tmux")
-            .args(["switch-client", "-t", session_name])
-            .output()
-            .context("Failed to switch to restored session")?;
-        println!("Session restored successfully");
-    } else {
-        // For attach-session, we need to use spawn() and wait() instead of output()
-        // because attach needs to take control of the terminal
-        let mut child = Command::new("tmux")
-            .args(["attach-session", "-t", session_name])
-            .spawn()
-            .context("Failed to attach to restored session")?;
-
-        // Wait for the tmux session to end
-        child
-            .wait()
-            .context("Failed to wait for tmux session to complete")?;
-    }
     Ok(())
 }
 
@@ -239,10 +219,6 @@ fn restore_window(session_name: &str, window: &Window) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn is_inside_tmux() -> bool {
-    std::env::var("TMUX").is_ok()
 }
 
 fn print_session_info(windows: &[Window]) {

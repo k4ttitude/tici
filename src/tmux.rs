@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
+pub fn is_inside_tmux() -> bool {
+    std::env::var("TMUX").is_ok()
+}
+
 pub fn session_exists(session_name: &str) -> Result<bool> {
     let output = Command::new("tmux")
         .args(["has-session", "-t", session_name])
@@ -20,6 +24,14 @@ pub fn attach_session(session_name: &str) -> Result<()> {
         anyhow::bail!("Failed to attach to tmux session: {}", session_name);
     }
 
+    Ok(())
+}
+
+pub fn switch_to_session(session_name: &str) -> Result<()> {
+    Command::new("tmux")
+        .args(["switch-client", "-t", session_name])
+        .output()
+        .context("Failed to switch to restored session")?;
     Ok(())
 }
 

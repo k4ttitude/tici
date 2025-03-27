@@ -45,7 +45,13 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Restore) => {
-            restore::restore_tmux_session(&save_path, &session_name, cli.dry_run)?;
+            restore::restore_tmux_session(&save_path, &session_name, cli.dry_run).and({
+                if tmux::is_inside_tmux() {
+                    tmux::switch_to_session(&session_name)
+                } else {
+                    tmux::attach_session(&session_name)
+                }
+            })?;
         }
 
         None => {
@@ -69,7 +75,8 @@ fn main() -> Result<()> {
             tmux::new_tmux_session(&session_name, true)
                 .context(format!("Failed to create sesstion {}", session_name))?;
             restore::restore_tmux_session(&save_path, &session_name, false)
-                .context(format!("Failed to restore session {}", session_name))?;
+                .and(tmux::attach_session(&session_name))
+                .or_else(|_| tmux::switch_to_session(&session_name))?;
         }
     }
 
