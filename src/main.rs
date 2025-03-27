@@ -1,11 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-mod new;
 mod restore;
 mod save;
 mod session;
+mod tmux;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -43,19 +43,33 @@ fn main() -> Result<()> {
                 save::save_tmux_session(&save_path)?;
             }
         }
+
         Some(Commands::Restore) => {
-            restore::restore_tmux_session(&save_path, cli.dry_run)?;
+            restore::restore_tmux_session(&save_path, &session_name, cli.dry_run)?;
         }
+
         None => {
-            // Default behavior: try to restore, or create new if no session exists
-            restore::restore_tmux_session(&save_path, cli.dry_run).or_else(|_| {
-                if cli.dry_run {
-                    println!("Would create new session: {}", session_name);
-                    Ok(())
-                } else {
-                    new::new_tmux_session(&session_name)
-                }
-            })?;
+            if cli.dry_run {
+                println!("Would try to:");
+                println!("1. Find and attach to session: {}", session_name);
+                println!("2. Or create new session{}", session_name);
+                println!("3. Then restore session from: {}\n", save_path.display());
+                restore::restore_tmux_session(&save_path, &session_name, true)?;
+                return Ok(());
+            }
+
+            // First try to find and attach to existing session
+            if tmux::session_exists(&session_name)? {
+                tmux::attach_session(&session_name)
+                    .context(format!("Failed to attach to session {}", session_name))?;
+                return Ok(());
+            }
+
+            // If no existing session, create a new one, then restored saved the session
+            tmux::new_tmux_session(&session_name, true)
+                .context(format!("Failed to create sesstion {}", session_name))?;
+            restore::restore_tmux_session(&save_path, &session_name, false)
+                .context(format!("Failed to restore session {}", session_name))?;
         }
     }
 

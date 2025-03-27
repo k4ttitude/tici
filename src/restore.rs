@@ -50,7 +50,7 @@ impl Window {
     }
 }
 
-pub fn restore_tmux_session(save_path: &PathBuf, dry_run: bool) -> Result<()> {
+pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bool) -> Result<()> {
     // Check if file exists
     if !save_path.exists() {
         anyhow::bail!("No saved session found for this directory");
@@ -125,101 +125,26 @@ pub fn restore_tmux_session(save_path: &PathBuf, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Create a new session with the first window
-    let first_window = &windows[0];
-    let session_name = &first_window.session_name;
-
+    // Clear all existing windows except the first one (tmux requires at least one window)
     Command::new("tmux")
-        .args([
-            "new-session",
-            "-d",
-            "-s",
-            session_name,
-            "-n",
-            &first_window.name,
-        ])
+        .args(["list-windows", "-t", session_name, "-F", "#{window_index}"])
         .output()
-        .context("Failed to create new tmux session")?;
-
-    // Create additional panes for the first window
-    for pane in first_window.panes.iter().skip(1) {
-        Command::new("tmux")
-            .args([
-                "split-window",
-                "-t",
-                &format!("{}:0", session_name),
-                "-c",
-                &pane.current_path,
-            ])
-            .output()
-            .with_context(|| format!("Failed to create pane {} in window 0", pane.index))?;
-    }
-
-    // Set the layout for the first window
-    Command::new("tmux")
-        .args([
-            "select-layout",
-            "-t",
-            &format!("{}:0", session_name),
-            &first_window.layout,
-        ])
-        .output()
-        .context("Failed to set layout for first window")?;
+        .context("Failed to list existing windows")?
+        .stdout
+        .split(|&b| b == b'\n')
+        .filter_map(|w| String::from_utf8_lossy(w).trim().parse::<u32>().ok())
+        .filter(|&index| index != 0) // Keep the first window
+        .try_for_each(|index| {
+            Command::new("tmux")
+                .args(["kill-window", "-t", &format!("{}:{}", session_name, index)])
+                .output()
+                .with_context(|| format!("Failed to kill window {}", index))
+                .map(|_| ())
+        })?;
 
     // Create remaining windows
-    for window in windows.iter().skip(1) {
-        Command::new("tmux")
-            .args([
-                "new-window",
-                "-t",
-                &format!("{}:{}", session_name, window.index),
-                "-n",
-                &window.name,
-            ])
-            .output()
-            .with_context(|| format!("Failed to create window {}", window.index))?;
-
-        // Create additional panes (skip first pane as it's created with new-window)
-        for pane in window.panes.iter().skip(1) {
-            Command::new("tmux")
-                .args([
-                    "split-window",
-                    "-t",
-                    &format!("{}:{}", session_name, window.index),
-                    "-c",
-                    &pane.current_path,
-                ])
-                .output()
-                .with_context(|| {
-                    format!(
-                        "Failed to create pane {} in window {}",
-                        pane.index, window.index
-                    )
-                })?;
-        }
-
-        // Set the layout
-        Command::new("tmux")
-            .args([
-                "select-layout",
-                "-t",
-                &format!("{}:{}", session_name, window.index),
-                &window.layout,
-            ])
-            .output()
-            .with_context(|| format!("Failed to set layout for window {}", window.index))?;
-
-        // Restore pane contents
-        for pane in &window.panes {
-            // If this is the active pane, select it
-            let target = format!("{}:{}.{}", session_name, window.index, pane.index);
-            if pane.active {
-                Command::new("tmux")
-                    .args(["select-pane", "-t", &target])
-                    .output()
-                    .with_context(|| format!("Failed to select active pane {}", pane.index))?;
-            }
-        }
+    for window in windows.iter() {
+        restore_window(session_name, window);
     }
 
     // Select the active window if any
@@ -254,6 +179,65 @@ pub fn restore_tmux_session(save_path: &PathBuf, dry_run: bool) -> Result<()> {
             .wait()
             .context("Failed to wait for tmux session to complete")?;
     }
+    Ok(())
+}
+
+fn restore_window(session_name: &str, window: &Window) -> Result<()> {
+    if window.index > 0 {
+        Command::new("tmux")
+            .args([
+                "new-window",
+                "-t",
+                &format!("{}:{}", session_name, window.index),
+                "-n",
+                &window.name,
+            ])
+            .output()
+            .with_context(|| format!("Failed to create window {}", window.index))?;
+    }
+
+    // Create additional panes (skip first pane as it's created with new-window)
+    for pane in window.panes.iter().skip(1) {
+        Command::new("tmux")
+            .args([
+                "split-window",
+                "-t",
+                &format!("{}:{}", session_name, window.index),
+                "-c",
+                &pane.current_path,
+            ])
+            .output()
+            .with_context(|| {
+                format!(
+                    "Failed to create pane {} in window {}",
+                    pane.index, window.index
+                )
+            })?;
+    }
+
+    // Set the layout
+    Command::new("tmux")
+        .args([
+            "select-layout",
+            "-t",
+            &format!("{}:{}", session_name, window.index),
+            &window.layout,
+        ])
+        .output()
+        .with_context(|| format!("Failed to set layout for window {}", window.index))?;
+
+    // Restore pane contents
+    for pane in &window.panes {
+        // If this is the active pane, select it
+        let target = format!("{}:{}.{}", session_name, window.index, pane.index);
+        if pane.active {
+            Command::new("tmux")
+                .args(["select-pane", "-t", &target])
+                .output()
+                .with_context(|| format!("Failed to select active pane {}", pane.index))?;
+        }
+    }
+
     Ok(())
 }
 
