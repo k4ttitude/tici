@@ -3,47 +3,27 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-#[derive(Debug)]
-struct Pane {
-    index: u32,
-    title: String,
-    current_path: String,
-    active: bool,
-    current_command: String,
-    pid: u32,
-    history_size: u32,
-    content: String,
-}
-
-#[derive(Debug)]
-struct Window {
-    session_name: String,
-    index: u32,
-    name: String,
-    active: bool,
-    layout: String,
-    panes: Vec<Pane>,
-}
+use crate::models::{Pane, Window};
 
 impl Window {
-    fn from_line(line: &str) -> Option<Self> {
+    fn from_line(line: &str) -> Result<Self, anyhow::Error> {
         // Format: # Window: session_name:index (name) active layout
         let line = line.trim_start_matches("# Window: ");
-        let mut parts = line.split_whitespace();
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() < 5 {
+            anyhow::bail!("Failed to read window info from: {}", line);
+        }
 
-        let session_index = parts.next()?;
-        let (session_name, index) = session_index.split_once(':')?;
+        let (session_name, index, name, active, layout) =
+            (parts[0], parts[1], parts[2], parts[3], parts[4]);
 
-        let name = parts.next()?.trim_start_matches('(').trim_end_matches(')');
-        let active = parts.next()? == "1";
-
-        let layout = parts.next()?;
-
-        Some(Window {
+        Ok(Window {
             session_name: session_name.to_string(),
-            index: index.parse().ok()?,
+            index: index
+                .parse()
+                .with_context(|| format!("Failed to parse window index: {}", index))?,
             name: name.to_string(),
-            active,
+            active: active == "1",
             layout: layout.to_string(),
             panes: Vec::new(),
         })
@@ -65,7 +45,7 @@ pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bo
     let mut lines = content.lines().peekable();
     while let Some(line) = lines.next() {
         if line.starts_with("# Window: ") {
-            if let Some(mut window) = Window::from_line(line) {
+            if let Ok(mut window) = Window::from_line(line) {
                 // Collect all panes for this window until we hit the next window or EOF
                 while let Some(next_line) = lines.peek() {
                     if next_line.starts_with("# Window: ") {
@@ -76,37 +56,22 @@ pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bo
                         // Skip the "# Pane: " prefix
                         let pane_data = &pane_line["# Pane: ".len()..];
 
-                        // Split on first 7 spaces to preserve any spaces in the remaining fields
-                        let mut splits = pane_data.splitn(7, ' ');
+                        let parts: Vec<&str> = pane_data.split('|').collect();
 
-                        if let (
-                            Some(index),
-                            Some(active),
-                            Some(title),
-                            Some(path),
-                            Some(cmd),
-                            Some(pid),
-                            Some(history),
-                        ) = (
-                            splits.next(),
-                            splits.next(),
-                            splits.next(),
-                            splits.next(),
-                            splits.next(),
-                            splits.next(),
-                            splits.next(),
-                        ) {
-                            window.panes.push(Pane {
-                                index: index.parse().unwrap_or(0),
-                                active: active == "1",
-                                title: title.to_string(),
-                                current_path: path.to_string(),
-                                current_command: cmd.to_string(),
-                                pid: pid.parse().unwrap_or(0),
-                                history_size: history.parse().unwrap_or(0),
-                                content: String::new(),
-                            });
+                        if parts.len() < 6 {
+                            anyhow::bail!("Failed to read pane info from: {}", pane_line);
                         }
+
+                        let (index, active, title, path, cmd, pid) =
+                            (parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]);
+                        window.panes.push(Pane {
+                            index: index.parse().unwrap_or(0),
+                            active: active == "1",
+                            title: title.to_string(),
+                            current_path: path.to_string(),
+                            current_command: cmd.to_string(),
+                            pid: pid.parse().unwrap_or(0),
+                        });
                     } else {
                         lines.next(); // Skip non-pane lines
                     }
@@ -174,6 +139,12 @@ fn restore_window(session_name: &str, window: &Window) -> Result<()> {
             ])
             .output()
             .with_context(|| format!("Failed to create window {}", window.index))?;
+    }
+
+    // cd the first pane into the saved path
+    let first_pane = window.panes.first();
+    if let Some(pane) = first_pane {
+        Command::new("cd").args([&pane.current_path]);
     }
 
     // Create additional panes (skip first pane as it's created with new-window)

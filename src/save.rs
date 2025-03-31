@@ -3,26 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-#[derive(Debug)]
-struct Pane {
-    index: u32,
-    title: String,
-    current_path: String,
-    active: bool,
-    current_command: String,
-    pid: u32,
-    history_size: u32,
-}
-
-#[derive(Debug)]
-struct Window {
-    session_name: String,
-    index: u32,
-    name: String,
-    active: bool,
-    layout: String,
-    panes: Vec<Pane>,
-}
+use crate::models::{Pane, Window};
 
 impl Window {
     fn from_format_str(format_str: &str) -> Option<Self> {
@@ -51,7 +32,7 @@ impl Window {
                 "-t",
                 &target,
                 "-F",
-                "pane\t#{session_name}\t#{window_index}\t#{window_active}\t:#{window_flags}\t#{pane_index}\t#{pane_title}\t:#{pane_current_path}\t#{pane_active}\t#{pane_current_command}\t#{pane_pid}\t#{history_size}",
+                "pane\t#{session_name}\t#{window_index}\t#{window_active}\t:#{window_flags}\t#{pane_index}\t#{pane_title}\t:#{pane_current_path}\t#{pane_active}\t#{pane_current_command}\t#{pane_pid}",
             ])
             .output()
             .with_context(|| format!("Failed to list panes for window {}", self.index))?;
@@ -64,42 +45,22 @@ impl Window {
 
         for pane_info in pane_list.lines() {
             let parts: Vec<&str> = pane_info.split('\t').collect();
-            if parts.len() >= 12 {
+            if parts.len() >= 11 {
                 let index = parts[5].parse().unwrap_or(0);
                 let title = parts[6].to_string();
                 let current_path = parts[7].trim_start_matches(':').to_string();
                 let active = parts[8] == "1";
                 let current_command = parts[9].to_string();
                 let pid = parts[10].parse().unwrap_or(0);
-                let history_size = parts[11].parse().unwrap_or(0);
 
-                // Capture pane content
-                let content = Command::new("tmux")
-                    .args([
-                        "capture-pane",
-                        "-p",
-                        "-t",
-                        &format!("{}:{}.{}", self.session_name, self.index, index),
-                    ])
-                    .output()
-                    .with_context(|| {
-                        format!(
-                            "Failed to capture content for pane {}.{}",
-                            self.index, index
-                        )
-                    })?;
-
-                if content.status.success() {
-                    self.panes.push(Pane {
-                        index,
-                        title,
-                        current_path,
-                        active,
-                        current_command,
-                        pid,
-                        history_size,
-                    });
-                }
+                self.panes.push(Pane {
+                    index,
+                    title,
+                    current_path,
+                    active,
+                    current_command,
+                    pid,
+                });
             }
         }
 
@@ -135,7 +96,7 @@ pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
             .with_context(|| format!("Failed to parse window format: {}", line))?;
 
         content.push_str(&format!(
-            "# Window: {}:{} ({}) {} {}\n",
+            "# Window: {}|{}|({})|{}|{}\n",
             window.session_name,
             window.index,
             window.name,
@@ -147,14 +108,13 @@ pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
 
         for pane in &window.panes {
             content.push_str(&format!(
-                "# Pane: {} {} {} {} {} {} {}\n",
+                "# Pane: {}|{}|{}|{}|{}|{}\n",
                 pane.index,
                 if pane.active { "1" } else { "0" },
                 pane.title,
                 pane.current_path,
                 pane.current_command,
                 pane.pid,
-                pane.history_size
             ));
         }
     }

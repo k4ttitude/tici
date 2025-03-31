@@ -2,9 +2,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod models;
 mod restore;
 mod save;
-mod session;
+mod session_info;
 mod tmux;
 
 #[derive(Parser)]
@@ -33,7 +34,7 @@ enum Commands {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let (save_path, session_name) = session::get_session_info(cli.working_dir.as_ref())?;
+    let (save_path, session_name) = session_info::get_session_info(cli.working_dir.as_ref())?;
 
     match &cli.command {
         Some(Commands::Save) => {
@@ -45,13 +46,8 @@ fn main() -> Result<()> {
         }
 
         Some(Commands::Restore) => {
-            restore::restore_tmux_session(&save_path, &session_name, cli.dry_run).and({
-                if tmux::is_inside_tmux() {
-                    tmux::switch_to_session(&session_name)
-                } else {
-                    tmux::attach_session(&session_name)
-                }
-            })?;
+            restore::restore_tmux_session(&save_path, &session_name, cli.dry_run)
+                .and(tmux::switch_to_session(&session_name))?;
         }
 
         None => {
@@ -66,17 +62,20 @@ fn main() -> Result<()> {
 
             // First try to find and attach to existing session
             if tmux::session_exists(&session_name)? {
-                tmux::attach_session(&session_name)
-                    .context(format!("Failed to attach to session {}", session_name))?;
+                tmux::switch_to_session(&session_name)?;
                 return Ok(());
             }
 
-            // If no existing session, create a new one, then restored saved the session
+            // If no existing session, create a new one with -d (detached) option
             tmux::new_tmux_session(&session_name, true)
                 .context(format!("Failed to create sesstion {}", session_name))?;
-            restore::restore_tmux_session(&save_path, &session_name, false)
-                .and(tmux::attach_session(&session_name))
-                .or_else(|_| tmux::switch_to_session(&session_name))?;
+
+            // try restoring session, ignore errors (if any)
+            let _ = restore::restore_tmux_session(&save_path, &session_name, false);
+
+            // switch/attach to the session, then also save it
+            tmux::switch_to_session(&session_name)?;
+            save::save_tmux_session(&save_path)?;
         }
     }
 
