@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use tmux::NewSessionOpts;
 
 mod models;
 mod restore;
@@ -34,7 +35,7 @@ enum Commands {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let (save_path, session_name) = session_info::get_session_info(cli.working_dir.as_ref())?;
+    let (dir, save_path, session_name) = session_info::get_session_info(cli.working_dir.as_ref())?;
 
     match &cli.command {
         Some(Commands::Save) => {
@@ -67,15 +68,20 @@ fn main() -> Result<()> {
             }
 
             // If no existing session, create a new one with -d (detached) option
-            tmux::new_tmux_session(&session_name, true)
-                .context(format!("Failed to create sesstion {}", session_name))?;
+            tmux::new_tmux_session(
+                &session_name,
+                NewSessionOpts {
+                    detached: true,
+                    path: Some(dir.to_string_lossy().to_string()),
+                },
+            )
+            .context(format!("Failed to create sesstion {}", session_name))?;
 
             // try restoring session, ignore errors (if any)
             let _ = restore::restore_tmux_session(&save_path, &session_name, false);
 
-            // switch/attach to the session, then also save it
+            // switch/attach to the session
             tmux::switch_to_session(&session_name)?;
-            save::save_tmux_session(&save_path)?;
         }
     }
 

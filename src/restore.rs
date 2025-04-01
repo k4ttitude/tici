@@ -129,22 +129,18 @@ pub fn restore_tmux_session(save_path: &PathBuf, session_name: &str, dry_run: bo
 
 fn restore_window(session_name: &str, window: &Window) -> Result<()> {
     if window.index > 0 {
+        let window_format = format!("{}:{}", session_name, window.index);
+        let mut args = vec!["new-window", "-t", &window_format, "-n", &window.name];
+
+        let first_pane = window.panes.first();
+        if let Some(pane) = first_pane {
+            args.extend(["-c", &pane.current_path]);
+        }
+
         Command::new("tmux")
-            .args([
-                "new-window",
-                "-t",
-                &format!("{}:{}", session_name, window.index),
-                "-n",
-                &window.name,
-            ])
+            .args(&args)
             .output()
             .with_context(|| format!("Failed to create window {}", window.index))?;
-    }
-
-    // cd the first pane into the saved path
-    let first_pane = window.panes.first();
-    if let Some(pane) = first_pane {
-        Command::new("cd").args([&pane.current_path]);
     }
 
     // Create additional panes (skip first pane as it's created with new-window)

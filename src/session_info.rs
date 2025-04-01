@@ -13,7 +13,7 @@ fn create_hash(path: &str) -> String {
     format!("{:x}", hasher.finalize())[..16].to_string()
 }
 
-pub fn get_session_info(working_dir: Option<&PathBuf>) -> Result<(PathBuf, String)> {
+pub fn get_session_info(working_dir: Option<&PathBuf>) -> Result<(PathBuf, PathBuf, String)> {
     let dir = match working_dir {
         Some(path) => {
             let path = path.clone();
@@ -46,5 +46,5 @@ pub fn get_session_info(working_dir: Option<&PathBuf>) -> Result<(PathBuf, Strin
     let save_dir = PathBuf::from(home_dir).join(".tmux").join("tici");
     let save_path = save_dir.join(&filename);
 
-    Ok((save_path, session_name))
+    Ok((dir, save_path, session_name))
 }
