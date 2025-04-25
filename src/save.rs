@@ -68,7 +68,7 @@ impl Window {
     }
 }
 
-pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
+pub fn save_tmux_session(save_path: &PathBuf, dry_run: bool) -> Result<()> {
     // Create the parent directory if it doesn't exist
     if let Some(parent) = save_path.parent() {
         fs::create_dir_all(parent)
@@ -96,7 +96,7 @@ pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
             .with_context(|| format!("Failed to parse window format: {}", line))?;
 
         content.push_str(&format!(
-            "# Window: {}|{}|({})|{}|{}\n",
+            "# Window: {}|{}|{}|{}|{}\n",
             window.session_name,
             window.index,
             window.name,
@@ -119,9 +119,16 @@ pub fn save_tmux_session(save_path: &PathBuf) -> Result<()> {
         }
     }
 
-    fs::write(&save_path, content)
-        .with_context(|| format!("Failed to write to file: {}", save_path.display()))?;
+    if dry_run {
+        println!("Would save session to: {}", save_path.display());
+        println!("---");
+        println!("{}", content);
+        println!("---");
+    } else {
+        fs::write(&save_path, content)
+            .with_context(|| format!("Failed to write to file: {}", save_path.display()))?;
 
-    println!("Session saved to: {}", save_path.display());
+        println!("Session saved to: {}", save_path.display());
+    }
     Ok(())
 }

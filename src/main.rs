@@ -39,11 +39,7 @@ fn main() -> Result<()> {
 
     match &cli.command {
         Some(Commands::Save) => {
-            if cli.dry_run {
-                println!("Would save session to: {}", save_path.display());
-            } else {
-                save::save_tmux_session(&save_path)?;
-            }
+            save::save_tmux_session(&save_path, cli.dry_run)?;
         }
 
         Some(Commands::Restore) => {
